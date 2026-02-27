@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Contabilidade Profissional</title>
+    <style>
+        :root { --primary: #2c3e50; --income: #27ae60; --expense: #e74c3c; --bg: #f4f7f6; --accent: #3498db; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; color: #333; }
+        .container { max-width: 950px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .filter-box { background: #edf2f7; padding: 10px 15px; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .card { padding: 20px; border-radius: 10px; color: white; text-align: center; }
+        .card span { display: block; font-size: 0.9em; opacity: 0.9; margin-bottom: 5px; }
+        .card strong { font-size: 1.4em; }
+        .income { background: var(--income); }
+        .expense { background: var(--expense); }
+        .balance { background: var(--primary); }
+        .form-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 30px; }
+        input, select, button { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        button { cursor: pointer; font-weight: bold; transition: 0.3s; border: none; }
+        .btn-add { background: var(--primary); color: white; }
+        .btn-backup { background: var(--accent); color: white; padding: 8px 15px; font-size: 12px; }
+        .btn-import { background: #95a5a6; color: white; padding: 8px 15px; font-size: 12px; }
+        .file-actions { display: flex; gap: 10px; margin-bottom: 15px; justify-content: flex-end; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 12px; border-bottom: 2px solid #eee; color: #666; }
+        td { padding: 12px; border-bottom: 1px solid #eee; }
+        .tag-parcela { font-size: 0.75em; color: #7f8c8d; background: #ebf0f1; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
+        .btn-del { background: none; color: #e74c3c; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="file-actions">
+        <button class="btn-backup" onclick="exportData()" title="Baixa um arquivo com todos os seus dados para segurança.">📥 Salvar Backup</button>
+        <button class="btn-import" onclick="document.getElementById('fileInput').click()" title="Recupera os dados de um arquivo de backup.">📤 Carregar Backup</button>
+        <input type="file" id="fileInput" style="display:none" onchange="importData(event)">
+    </div>
+
+    <div class="header-flex">
+        <h2>Contabilidade Pessoal</h2>
+        <div class="filter-box">
+            <span>Mês de Referência:</span>
+            <input type="month" id="filter-date" onchange="updateUI()">
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="card income"><span>Entradas (Mês)</span><strong id="display-income">R$ 0,00</strong></div>
+        <div class="card expense"><span>Saídas (Mês)</span><strong id="display-expense">R$ 0,00</strong></div>
+        <div class="card balance"><span>Saldo Acumulado Geral</span><strong id="display-balance">R$ 0,00</strong></div>
+    </div>
+
+    <div class="form-grid" id="main-form">
+        <input type="text" id="desc" placeholder="Descrição" title="O que você comprou ou recebeu?">
+        <input type="number" id="amount" placeholder="Valor Total R$" title="Se for parcelado, digite o VALOR TOTAL.">
+        <input type="date" id="date">
+        <select id="type">
+            <option value="expense">Gasto</option>
+            <option value="income">Entrada</option>
+        </select>
+        <input type="number" id="installments" placeholder="Parc." min="1" value="1">
+        <button class="btn-add" onclick="addItem()" title="Pressione Enter para adicionar.">+</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Valor Parcela</th>
+                <th>Saldo Após</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="transaction-list"></tbody>
+    </table>
+</div>
+
+<script>
+    const now = new Date();
+    document.getElementById('filter-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('date').valueAsDate = new Date();
+
+    let transactions = JSON.parse(localStorage.getItem('finances_v6')) || [];
+
+    // --- NOVA FUNÇÃO: ESCUTAR O TECLADO ---
+    document.getElementById('main-form').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            addItem();
+        }
+    });
+
+    function addItem() {
+        const desc = document.getElementById('desc').value;
+        const totalAmount = parseFloat(document.getElementById('amount').value);
+        const dateValue = document.getElementById('date').value;
+        const type = document.getElementById('type').value;
+        const instals = parseInt(document.getElementById('installments').value) || 1;
+
+        if (!desc || isNaN(totalAmount) || !dateValue) return alert("Preencha todos os campos!");
+
+        const installmentValue = totalAmount / instals;
+        const baseDate = new Date(dateValue + 'T00:00:00');
+        const groupId = Date.now();
+
+        for (let i = 0; i < instals; i++) {
+            const nextDate = new Date(baseDate);
+            nextDate.setMonth(baseDate.getMonth() + i);
+            transactions.push({
+                id: groupId + i,
+                groupId: instals > 1 ? groupId : null,
+                desc: desc,
+                currentInstallment: i + 1,
+                totalInstallments: instals,
+                amount: installmentValue,
+                date: nextDate.toISOString().split('T')[0],
+                type: type
+            });
+        }
+
+        saveAndUpdate();
+        document.getElementById('desc').value = '';
+        document.getElementById('amount').value = '';
+        document.getElementById('installments').value = '1';
+        document.getElementById('desc').focus(); // Volta o foco para o primeiro campo
+    }
+
+    function deleteItem(id, groupId) {
+        if (!groupId) {
+            if(confirm("Excluir este item?")) transactions = transactions.filter(t => t.id !== id);
+        } else {
+            const choice = confirm("Item parcelado!\n\nOK: Excluir TODAS as parcelas.\nCancelar: Excluir APENAS esta específica.");
+            if (choice) transactions = transactions.filter(t => t.groupId !== groupId);
+            else transactions = transactions.filter(t => t.id !== id);
+        }
+        saveAndUpdate();
+    }
+
+    function exportData() {
+        if (transactions.length === 0) return alert("Não há dados.");
+        const dataBlob = new Blob([JSON.stringify(transactions)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(dataBlob);
+        link.download = `backup_financas_${new Date().toLocaleDateString().replace(/\//g,'-')}.json`;
+        link.click();
+    }
+
+    function importData(event) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (Array.isArray(imported)) {
+                    if(confirm("Substituir dados atuais?")) {
+                        transactions = imported;
+                        saveAndUpdate();
+                    }
+                }
+            } catch (err) { alert("Erro no backup."); }
+        };
+        reader.readAsText(event.target.files[0]);
+    }
+
+    function saveAndUpdate() {
+        localStorage.setItem('finances_v6', JSON.stringify(transactions));
+        updateUI();
+    }
+
+    function updateUI() {
+        const list = document.getElementById('transaction-list');
+        const filterMonth = document.getElementById('filter-date').value;
+        list.innerHTML = '';
+        let totalIn = 0, totalOut = 0, runningBalance = 0;
+
+        const sorted = transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+        sorted.forEach(t => {
+            const isIncome = t.type === 'income';
+            if (isIncome) runningBalance += t.amount; else runningBalance -= t.amount;
+
+            if (t.date.startsWith(filterMonth)) {
+                if (isIncome) totalIn += t.amount; else totalOut += t.amount;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${t.date.split('-').reverse().slice(0,2).join('/')}</td>
+                    <td>${t.desc} ${t.totalInstallments > 1 ? `<span class="tag-parcela">${t.currentInstallment}/${t.totalInstallments}</span>` : ''}</td>
+                    <td style="color:${isIncome ? 'green' : 'red'}; font-weight:bold">${isIncome?'+':'-'} R$ ${t.amount.toFixed(2)}</td>
+                    <td><strong>R$ ${runningBalance.toFixed(2)}</strong></td>
+                    <td><button class="btn-del" onclick="deleteItem(${t.id}, ${t.groupId})">✖</button></td>
+                `;
+                list.appendChild(row);
+            }
+        });
+        document.getElementById('display-income').innerText = `R$ ${totalIn.toFixed(2)}`;
+        document.getElementById('display-expense').innerText = `R$ ${totalOut.toFixed(2)}`;
+        document.getElementById('display-balance').innerText = `R$ ${runningBalance.toFixed(2)}`;
+    }
+    updateUI();
+</script>
+</body>
+</html>
