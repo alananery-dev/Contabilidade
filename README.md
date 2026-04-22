@@ -2,7 +2,7 @@
 
 Este é um sistema de contabilidade pessoal focado em **Front-end**, desenvolvido para oferecer controle total sobre entradas e gastos, com suporte especial para compras parceladas e sincronização automática de dados.
 
-> **🔗 Acesse o projeto aqui:** [[COLE_O_LINK_DO_SEU_SITE_AQUI]](https://alananery-dev.github.io/Contabilidade/)
+> **🔗 Acesse o projeto aqui:** (https://alananery-dev.github.io/Contabilidade/)
 
 ---
 
